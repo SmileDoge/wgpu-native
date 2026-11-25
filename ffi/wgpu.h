@@ -315,9 +315,10 @@ extern "C" {
 
 void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
 
-// openRTS's fork (Windows, Vulkan): a texture over a D3D11 texture shared by
-// an NT handle (D3D11_RESOURCE_MISC_SHARED_NTHANDLE), the device asked for
-// WGPUNativeFeature_VulkanExternalMemoryWin32. NULL when it cannot.
+// openRTS's fork (Windows): a texture over a D3D11 texture shared by an NT
+// handle (D3D11_RESOURCE_MISC_SHARED_NTHANDLE). Vulkan: the device asked for
+// WGPUNativeFeature_VulkanExternalMemoryWin32; D3D12: the handle opened by
+// the device. NULL when it cannot.
 WGPUTexture wgpuDeviceImportD3D11SharedTexture(WGPUDevice device, void * sharedHandle, WGPUTextureDescriptor const * descriptor);
 size_t wgpuInstanceEnumerateAdapters(WGPUInstance instance, WGPU_NULLABLE WGPUInstanceEnumerateAdapterOptions const * options, WGPUAdapter * adapters);
 

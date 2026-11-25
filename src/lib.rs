@@ -2469,10 +2469,12 @@ pub unsafe extern "C" fn wgpuDeviceCreateTexture(
     }))
 }
 
-// openRTS's fork: a texture over a D3D11 texture shared by an NT handle
-// (wgpu-hal's Vulkan `texture_from_d3d11_shared_handle`), for a frame handed
-// to OpenXR's D3D11 swapchain without the CPU.
-#[cfg(all(windows, feature = "vulkan"))]
+// openRTS's fork: a texture over a D3D11 texture shared by an NT handle, for
+// a frame handed to OpenXR's D3D11 swapchain or NVIDIA DLSS on D3D11 without
+// the CPU. Vulkan: wgpu-hal's `texture_from_d3d11_shared_handle` (the device
+// asked for VULKAN_EXTERNAL_MEMORY_WIN32); D3D12: the handle opened by the
+// device (`OpenSharedHandle`), the resource taken by `texture_from_raw`.
+#[cfg(all(windows, any(feature = "vulkan", feature = "dx12")))]
 #[no_mangle]
 pub unsafe extern "C" fn wgpuDeviceImportD3D11SharedTexture(
     device: native::WGPUDevice,
@@ -2511,24 +2513,55 @@ pub unsafe extern "C" fn wgpuDeviceImportD3D11SharedTexture(
         memory_flags: hal::MemoryFlags::empty(),
         view_formats: Vec::new(),
     };
-    let hal_texture = {
-        let Some(hal_device) = context.device_as_hal::<hal::api::Vulkan>(device_id) else {
-            log::error!("wgpuDeviceImportD3D11SharedTexture: the device is not Vulkan's");
-            return std::ptr::null_mut();
-        };
-        match hal_device.texture_from_d3d11_shared_handle(
-            windows::Win32::Foundation::HANDLE(shared_handle),
-            &hal_desc,
-        ) {
-            Ok(texture) => texture,
-            Err(error) => {
-                log::error!("wgpuDeviceImportD3D11SharedTexture: {error:?}");
+    let mut made: Option<(wgc::id::TextureId, Option<wgc::resource::CreateTextureError>)> = None;
+    #[cfg(feature = "vulkan")]
+    if made.is_none() {
+        if let Some(hal_device) = context.device_as_hal::<hal::api::Vulkan>(device_id) {
+            let texture = match hal_device.texture_from_d3d11_shared_handle(
+                windows::Win32::Foundation::HANDLE(shared_handle),
+                &hal_desc,
+            ) {
+                Ok(texture) => texture,
+                Err(error) => {
+                    log::error!("wgpuDeviceImportD3D11SharedTexture (Vulkan): {error:?}");
+                    return std::ptr::null_mut();
+                }
+            };
+            drop(hal_device);
+            made = Some(context.create_texture_from_hal(Box::new(texture), device_id, &desc, None));
+        }
+    }
+    #[cfg(feature = "dx12")]
+    if made.is_none() {
+        if let Some(hal_device) = context.device_as_hal::<hal::api::Dx12>(device_id) {
+            let mut resource: Option<windows::Win32::Graphics::Direct3D12::ID3D12Resource> = None;
+            if let Err(error) = hal_device
+                .raw_device()
+                .OpenSharedHandle(windows::Win32::Foundation::HANDLE(shared_handle), &mut resource)
+            {
+                log::error!("wgpuDeviceImportD3D11SharedTexture (D3D12): {error:?}");
                 return std::ptr::null_mut();
             }
+            let Some(resource) = resource else {
+                log::error!("wgpuDeviceImportD3D11SharedTexture (D3D12): no resource");
+                return std::ptr::null_mut();
+            };
+            drop(hal_device);
+            let texture = hal::dx12::Device::texture_from_raw(
+                resource,
+                desc.format,
+                desc.dimension,
+                desc.size,
+                desc.mip_level_count,
+                desc.sample_count,
+            );
+            made = Some(context.create_texture_from_hal(Box::new(texture), device_id, &desc, None));
         }
+    }
+    let Some((texture_id, error)) = made else {
+        log::error!("wgpuDeviceImportD3D11SharedTexture: the device is neither Vulkan's nor D3D12's");
+        return std::ptr::null_mut();
     };
-    let (texture_id, error) =
-        context.create_texture_from_hal(Box::new(hal_texture), device_id, &desc, None);
     if let Some(cause) = error {
         handle_error(error_sink, cause, desc.label, "wgpuDeviceImportD3D11SharedTexture");
     }

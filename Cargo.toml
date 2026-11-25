@@ -108,10 +108,11 @@ workspace = true
 hal = { workspace = true, features = ["renderdoc"] }
 
 [target.'cfg(windows)'.dependencies.windows]
-# openRTS's fork: the HANDLE wgpu-hal's D3D11 shared-texture import takes.
+# openRTS's fork: the HANDLE wgpu-hal's D3D11 shared-texture import takes,
+# and D3D12's OpenSharedHandle for the same on D3D12.
 version = "0.58"
 default-features = false
-features = ["Win32_Foundation"]
+features = ["Win32_Foundation", "Win32_Graphics_Direct3D12", "Win32_Graphics_Dxgi_Common"]
 
 [target.'cfg(windows)'.dependencies]
 hal = { workspace = true, features = ["dx12", "renderdoc"] }
