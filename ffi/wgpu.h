@@ -320,6 +320,18 @@ void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
 // WGPUNativeFeature_VulkanExternalMemoryWin32; D3D12: the handle opened by
 // the device. NULL when it cannot.
 WGPUTexture wgpuDeviceImportD3D11SharedTexture(WGPUDevice device, void * sharedHandle, WGPUTextureDescriptor const * descriptor);
+// openRTS's fork (Windows): a fence shared by an NT handle (a D3D11 fence
+// made with D3D11_FENCE_FLAG_SHARED) opened by the device: D3D12's
+// OpenSharedHandle, or a Vulkan timeline semaphore importing it (the device
+// asked for WGPUNativeFeature_VulkanExternalMemoryWin32 gets
+// VK_KHR_external_semaphore_win32 when the GPU has it). An opaque pointer,
+// NULL when it cannot; released by wgpuDeviceReleaseSharedFence.
+void * wgpuDeviceOpenSharedFence(WGPUDevice device, void * sharedHandle);
+void wgpuDeviceReleaseSharedFence(void * fence);
+// The fence set to `value` on the queue after what was submitted so far, or
+// the queue's next work held until the fence reaches it (on the GPU).
+WGPUBool wgpuQueueSignalSharedFence(WGPUQueue queue, void * fence, uint64_t value);
+WGPUBool wgpuQueueWaitSharedFence(WGPUQueue queue, void * fence, uint64_t value);
 // openRTS's fork (Windows, D3D12): a fence shared by an NT handle (a D3D11
 // fence made with D3D11_FENCE_FLAG_SHARED) opened by the device, as an
 // ID3D12Fence* the caller releases; NULL when it cannot.

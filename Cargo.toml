@@ -107,6 +107,10 @@ workspace = true
 [target.'cfg(all(unix, not(target_os = "ios"), not(target_os = "macos")))'.dependencies]
 hal = { workspace = true, features = ["renderdoc"] }
 
+[target.'cfg(windows)'.dependencies.ash]
+# openRTS's fork: a D3D11 fence imported as a Vulkan timeline semaphore.
+version = "0.38"
+
 [target.'cfg(windows)'.dependencies.windows]
 # openRTS's fork: the HANDLE wgpu-hal's D3D11 shared-texture import takes,
 # and D3D12's OpenSharedHandle for the same on D3D12.
