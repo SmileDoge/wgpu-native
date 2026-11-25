@@ -320,6 +320,15 @@ void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
 // WGPUNativeFeature_VulkanExternalMemoryWin32; D3D12: the handle opened by
 // the device. NULL when it cannot.
 WGPUTexture wgpuDeviceImportD3D11SharedTexture(WGPUDevice device, void * sharedHandle, WGPUTextureDescriptor const * descriptor);
+// openRTS's fork (Windows, D3D12): a fence shared by an NT handle (a D3D11
+// fence made with D3D11_FENCE_FLAG_SHARED) opened by the device, as an
+// ID3D12Fence* the caller releases; NULL when it cannot.
+void * wgpuDeviceOpenD3D12SharedFence(WGPUDevice device, void * sharedHandle);
+// openRTS's fork (D3D12): the fence (ID3D12Fence*) set to `value` on the
+// queue after what was submitted so far, or the queue's next work held until
+// the fence reaches it. Returns false on another API.
+WGPUBool wgpuQueueSignalD3D12Fence(WGPUQueue queue, void * fence, uint64_t value);
+WGPUBool wgpuQueueWaitD3D12Fence(WGPUQueue queue, void * fence, uint64_t value);
 size_t wgpuInstanceEnumerateAdapters(WGPUInstance instance, WGPU_NULLABLE WGPUInstanceEnumerateAdapterOptions const * options, WGPUAdapter * adapters);
 
 WGPUSubmissionIndex wgpuQueueSubmitForIndex(WGPUQueue queue, size_t commandCount, WGPUCommandBuffer const * commands);

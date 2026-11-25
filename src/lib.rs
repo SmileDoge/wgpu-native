@@ -2469,6 +2469,92 @@ pub unsafe extern "C" fn wgpuDeviceCreateTexture(
     }))
 }
 
+// openRTS's fork (D3D12): a fence shared by an NT handle (a D3D11 one made
+// with D3D11_FENCE_FLAG_SHARED) opened by the device; the ID3D12Fence* the
+// caller releases (IUnknown::Release), NULL when it cannot.
+#[cfg(all(windows, feature = "dx12"))]
+#[no_mangle]
+pub unsafe extern "C" fn wgpuDeviceOpenD3D12SharedFence(
+    device: native::WGPUDevice,
+    shared_handle: *mut std::ffi::c_void,
+) -> *mut std::ffi::c_void {
+    let (device_id, context) = {
+        let device = device.as_ref().expect("invalid device");
+        (device.id, &device.context)
+    };
+    let Some(hal_device) = context.device_as_hal::<hal::api::Dx12>(device_id) else {
+        log::error!("wgpuDeviceOpenD3D12SharedFence: the device is not D3D12's");
+        return std::ptr::null_mut();
+    };
+    let mut fence: Option<windows::Win32::Graphics::Direct3D12::ID3D12Fence> = None;
+    if let Err(error) = hal_device
+        .raw_device()
+        .OpenSharedHandle(windows::Win32::Foundation::HANDLE(shared_handle), &mut fence)
+    {
+        log::error!("wgpuDeviceOpenD3D12SharedFence: {error:?}");
+        return std::ptr::null_mut();
+    }
+    match fence {
+        Some(fence) => windows::core::Interface::into_raw(fence),
+        None => std::ptr::null_mut(),
+    }
+}
+
+// openRTS's fork (D3D12): `fence` (an ID3D12Fence*) set to `value` on the
+// queue's timeline after what was submitted so far (Signal), or the queue's
+// next work held until it reaches it (Wait). false: not a D3D12 queue.
+#[cfg(all(windows, feature = "dx12"))]
+unsafe fn queue_fence(
+    queue: native::WGPUQueue,
+    fence: *mut std::ffi::c_void,
+    value: u64,
+    signal: bool,
+) -> bool {
+    let (queue_id, context) = {
+        let queue = queue.as_ref().expect("invalid queue");
+        (queue.queue.id, &queue.queue.context)
+    };
+    let Some(fence) =
+        windows::core::Interface::from_raw_borrowed(&fence) as Option<&windows::Win32::Graphics::Direct3D12::ID3D12Fence>
+    else {
+        return false;
+    };
+    let Some(hal_queue) = context.queue_as_hal::<hal::api::Dx12>(queue_id) else {
+        log::error!("wgpuQueue*D3D12Fence: the queue is not D3D12's");
+        return false;
+    };
+    let result = if signal {
+        hal_queue.as_raw().Signal(fence, value)
+    } else {
+        hal_queue.as_raw().Wait(fence, value)
+    };
+    if let Err(error) = result {
+        log::error!("wgpuQueue*D3D12Fence: {error:?}");
+        return false;
+    }
+    true
+}
+
+#[cfg(all(windows, feature = "dx12"))]
+#[no_mangle]
+pub unsafe extern "C" fn wgpuQueueSignalD3D12Fence(
+    queue: native::WGPUQueue,
+    fence: *mut std::ffi::c_void,
+    value: u64,
+) -> native::WGPUBool {
+    queue_fence(queue, fence, value, true) as native::WGPUBool
+}
+
+#[cfg(all(windows, feature = "dx12"))]
+#[no_mangle]
+pub unsafe extern "C" fn wgpuQueueWaitD3D12Fence(
+    queue: native::WGPUQueue,
+    fence: *mut std::ffi::c_void,
+    value: u64,
+) -> native::WGPUBool {
+    queue_fence(queue, fence, value, false) as native::WGPUBool
+}
+
 // openRTS's fork: a texture over a D3D11 texture shared by an NT handle, for
 // a frame handed to OpenXR's D3D11 swapchain or NVIDIA DLSS on D3D11 without
 // the CPU. Vulkan: wgpu-hal's `texture_from_d3d11_shared_handle` (the device
