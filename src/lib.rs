@@ -2469,6 +2469,86 @@ pub unsafe extern "C" fn wgpuDeviceCreateTexture(
     }))
 }
 
+// openRTS's fork: a texture over a D3D11 texture shared by an NT handle
+// (wgpu-hal's Vulkan `texture_from_d3d11_shared_handle`), for a frame handed
+// to OpenXR's D3D11 swapchain without the CPU.
+#[cfg(all(windows, feature = "vulkan"))]
+#[no_mangle]
+pub unsafe extern "C" fn wgpuDeviceImportD3D11SharedTexture(
+    device: native::WGPUDevice,
+    shared_handle: *mut std::ffi::c_void,
+    descriptor: Option<&native::WGPUTextureDescriptor>,
+) -> native::WGPUTexture {
+    let (device_id, context, error_sink) = {
+        let device = device.as_ref().expect("invalid device");
+        (device.id, &device.context, &device.error_sink)
+    };
+    let descriptor = descriptor.expect("invalid descriptor");
+    let desc = wgt::TextureDescriptor {
+        label: string_view_into_label(descriptor.label),
+        size: conv::map_extent3d(&descriptor.size),
+        mip_level_count: descriptor.mipLevelCount,
+        sample_count: descriptor.sampleCount,
+        dimension: conv::map_texture_dimension(descriptor.dimension)
+            .unwrap_or(wgt::TextureDimension::D2),
+        format: conv::map_texture_format(descriptor.format)
+            .expect("invalid texture format for texture descriptor"),
+        usage: from_u64_bits(descriptor.usage)
+            .expect("invalid texture usage for texture descriptor"),
+        view_formats: Vec::new(),
+    };
+    let hal_desc = hal::TextureDescriptor {
+        label: None,
+        size: desc.size,
+        mip_level_count: desc.mip_level_count,
+        sample_count: desc.sample_count,
+        dimension: desc.dimension,
+        format: desc.format,
+        usage: wgt::TextureUses::COLOR_TARGET
+            | wgt::TextureUses::COPY_SRC
+            | wgt::TextureUses::COPY_DST
+            | wgt::TextureUses::RESOURCE,
+        memory_flags: hal::MemoryFlags::empty(),
+        view_formats: Vec::new(),
+    };
+    let hal_texture = {
+        let Some(hal_device) = context.device_as_hal::<hal::api::Vulkan>(device_id) else {
+            log::error!("wgpuDeviceImportD3D11SharedTexture: the device is not Vulkan's");
+            return std::ptr::null_mut();
+        };
+        match hal_device.texture_from_d3d11_shared_handle(
+            windows::Win32::Foundation::HANDLE(shared_handle),
+            &hal_desc,
+        ) {
+            Ok(texture) => texture,
+            Err(error) => {
+                log::error!("wgpuDeviceImportD3D11SharedTexture: {error:?}");
+                return std::ptr::null_mut();
+            }
+        }
+    };
+    let (texture_id, error) =
+        context.create_texture_from_hal(Box::new(hal_texture), device_id, &desc, None);
+    if let Some(cause) = error {
+        handle_error(error_sink, cause, desc.label, "wgpuDeviceImportD3D11SharedTexture");
+    }
+    Arc::into_raw(Arc::new(WGPUTextureImpl {
+        context: context.clone(),
+        id: texture_id,
+        error_sink: error_sink.clone(),
+        surface_id: None,
+        has_surface_presented: Arc::default(),
+        data: TextureData {
+            usage: descriptor.usage,
+            dimension: descriptor.dimension,
+            size: descriptor.size,
+            format: descriptor.format,
+            mip_level_count: descriptor.mipLevelCount,
+            sample_count: descriptor.sampleCount,
+        },
+    }))
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn wgpuDeviceDestroy(device: native::WGPUDevice) {
     let (device_id, context) = {

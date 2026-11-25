@@ -56,6 +56,8 @@ typedef enum WGPUNativeFeature {
     WGPUNativeFeature_TimestampQueryInsideEncoders = 0x00030024,
     WGPUNativeFeature_TimestampQueryInsidePasses = 0x00030025,
     WGPUNativeFeature_ShaderInt64 = 0x00030026,
+    // openRTS's fork: VK_KHR_external_memory_win32 (wgpuDeviceImportD3D11SharedTexture).
+    WGPUNativeFeature_VulkanExternalMemoryWin32 = 0x00030100,
     WGPUNativeFeature_Force32 = 0x7FFFFFFF
 } WGPUNativeFeature;
 
@@ -312,6 +314,11 @@ extern "C" {
 #endif
 
 void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
+
+// openRTS's fork (Windows, Vulkan): a texture over a D3D11 texture shared by
+// an NT handle (D3D11_RESOURCE_MISC_SHARED_NTHANDLE), the device asked for
+// WGPUNativeFeature_VulkanExternalMemoryWin32. NULL when it cannot.
+WGPUTexture wgpuDeviceImportD3D11SharedTexture(WGPUDevice device, void * sharedHandle, WGPUTextureDescriptor const * descriptor);
 size_t wgpuInstanceEnumerateAdapters(WGPUInstance instance, WGPU_NULLABLE WGPUInstanceEnumerateAdapterOptions const * options, WGPUAdapter * adapters);
 
 WGPUSubmissionIndex wgpuQueueSubmitForIndex(WGPUQueue queue, size_t commandCount, WGPUCommandBuffer const * commands);

@@ -1090,6 +1090,7 @@ dependencies = [
  "wgpu-core",
  "wgpu-hal",
  "wgpu-types",
+ "windows",
 ]
 
 [[package]]

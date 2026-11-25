@@ -1217,6 +1217,9 @@ pub fn features_to_native(features: wgt::Features) -> Vec<native::WGPUFeatureNam
     if features.contains(wgt::Features::TEXTURE_FORMAT_NV12) {
         temp.push(native::WGPUNativeFeature_TextureFormatNv12);
     }
+    if features.contains(wgt::Features::VULKAN_EXTERNAL_MEMORY_WIN32) {
+        temp.push(native::WGPUNativeFeature_VulkanExternalMemoryWin32);
+    }
     if features.contains(wgt::Features::EXPERIMENTAL_RAY_QUERY) {
         temp.push(native::WGPUNativeFeature_RayQuery);
     }
@@ -1307,6 +1310,7 @@ pub fn map_feature(feature: native::WGPUFeatureName) -> Option<wgt::Features> {
         native::WGPUNativeFeature_Subgroup => Some(Features::SUBGROUP),
         native::WGPUNativeFeature_SubgroupVertex => Some(Features::SUBGROUP_VERTEX),
         native::WGPUNativeFeature_SubgroupBarrier => Some(Features::SUBGROUP_BARRIER),
+        native::WGPUNativeFeature_VulkanExternalMemoryWin32 => Some(Features::VULKAN_EXTERNAL_MEMORY_WIN32),
         // fallback, probably not available in wgpu-core
         _ => None,
     }
