@@ -2509,6 +2509,13 @@ impl crate::Device for super::Device {
             .as_ref()
             .expect("Feature `RAY_TRACING` not enabled");
 
+        // openRTS's fork: the next BLAS's opacity micromaps.
+        let pending = super::micromap::next_blas_peek().unwrap_or_default();
+        let mut links: Vec<_> = pending
+            .iter()
+            .map(|m| m.as_ref().map(|m| m.triangles_link()))
+            .collect();
+
         let (geometries, primitive_counts) = match *desc.entries {
             crate::AccelerationStructureEntries::Instances(ref instances) => {
                 let instance_data = vk::AccelerationStructureGeometryInstancesDataKHR::default();
@@ -2531,7 +2538,10 @@ impl crate::Device for super::Device {
                     [vk::AccelerationStructureGeometryKHR; CAPACITY],
                 >::with_capacity(in_geometries.len());
 
+                let mut links = links.iter_mut();
+
                 for triangles in in_geometries {
+                    let link = links.next().and_then(|l| l.as_mut());
                     let mut triangle_data =
                         vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                             .index_type(vk::IndexType::NONE_KHR)
@@ -2578,6 +2588,9 @@ impl crate::Device for super::Device {
                     } else {
                         triangles.vertex_count / 3
                     };
+                    if let Some(link) = link {
+                        triangle_data = triangle_data.push_next(link);
+                    }
 
                     let geometry = vk::AccelerationStructureGeometryKHR::default()
                         .geometry_type(vk::GeometryTypeKHR::TRIANGLES)
@@ -2772,6 +2785,13 @@ impl crate::Device for super::Device {
                 buffer: raw_buffer,
                 block: Mutex::new(block),
                 compacted_size_query: pool,
+                // openRTS's fork: a BLAS takes the micromaps given for it.
+                micromaps: match desc.format {
+                    crate::AccelerationStructureFormat::BottomLevel => {
+                        super::micromap::next_blas_take().unwrap_or_default()
+                    }
+                    _ => Vec::new(),
+                },
             })
         }
     }

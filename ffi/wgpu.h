@@ -432,6 +432,28 @@ void wgpuTlasRelease(WGPUTlas tlas);
 void wgpuCommandEncoderBuildAccelerationStructures(WGPUCommandEncoder commandEncoder, size_t blasCount, WGPUBlasBuildEntry const * blas,
                                                    size_t tlasCount, WGPUTlasBuildEntry const * tlas);
 
+// openRTS's fork: opacity micromaps (VK_EXT_opacity_micromap, D3D12's DXR
+// 1.2) for one BLAS geometry each: `micromapCount` 4-state micromaps of
+// 4^subdivisionLevel micro-triangles (2 bits each, the bird-curve order,
+// ((4^level * 2 + 7) / 8) bytes each) in `data`, and per triangle of the
+// geometry (its index order) a micromap or a special index: -1 transparent,
+// -2 opaque, -3 unknown transparent, -4 unknown opaque. Unknown ones go to
+// the shader's candidates. wgpuDeviceSetNextBlasOpacityMicromaps gives the
+// next wgpuDeviceCreateBlas on this thread one a geometry (NULL: none).
+typedef struct WGPUOpacityMicromapImpl* WGPUOpacityMicromap;
+typedef struct WGPUOpacityMicromapDescriptor {
+    uint32_t subdivisionLevel;
+    uint32_t micromapCount;
+    uint8_t const * data;
+    size_t dataSize;
+    int32_t const * indices;
+    size_t indexCount;
+} WGPUOpacityMicromapDescriptor;
+WGPUBool wgpuDeviceSupportsOpacityMicromaps(WGPUDevice device);
+WGPUOpacityMicromap wgpuDeviceCreateOpacityMicromap(WGPUDevice device, WGPUOpacityMicromapDescriptor const * descriptor);
+void wgpuOpacityMicromapRelease(WGPUOpacityMicromap micromap);
+void wgpuDeviceSetNextBlasOpacityMicromaps(WGPUDevice device, size_t count, WGPUOpacityMicromap const * micromaps);
+
 void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
 
 // openRTS's fork (Windows): a texture over a D3D11 texture shared by an NT

@@ -30,6 +30,8 @@ mod conv;
 mod device;
 mod drm;
 mod instance;
+mod micromap;
+pub use micromap::{set_next_blas_opacity_micromaps, OpacityMicromap};
 mod sampler;
 mod semaphore_list;
 
@@ -561,6 +563,8 @@ struct DeviceExtensionFunctions {
     timeline_semaphore: Option<ExtensionFn<khr::timeline_semaphore::Device>>,
     ray_tracing: Option<RayTracingDeviceExtensionFunctions>,
     mesh_shading: Option<ext::mesh_shader::Device>,
+    /// openRTS's fork: VK_EXT_opacity_micromap (micromap.rs).
+    opacity_micromap: Option<ext::opacity_micromap::Device>,
 }
 
 struct RayTracingDeviceExtensionFunctions {
@@ -940,6 +944,8 @@ pub struct AccelerationStructure {
     buffer: vk::Buffer,
     block: Mutex<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
     compacted_size_query: Option<vk::QueryPool>,
+    /// openRTS's fork: its geometries' opacity micromaps (micromap.rs).
+    micromaps: Vec<Option<Arc<OpacityMicromap>>>,
 }
 
 impl crate::DynAccelerationStructure for AccelerationStructure {}

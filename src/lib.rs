@@ -5290,3 +5290,112 @@ pub unsafe extern "C" fn wgpuCommandEncoderBuildAccelerationStructures(
         handle_error(error_sink, cause, None, "wgpuCommandEncoderBuildAccelerationStructures");
     }
 }
+
+// openRTS's fork: opacity micromaps (ffi/wgpu.h, wgpu-hal's opacity_micromap).
+pub enum WGPUOpacityMicromapImpl {
+    #[cfg(feature = "vulkan")]
+    Vulkan(std::sync::Arc<hal::vulkan::OpacityMicromap>),
+    #[cfg(feature = "dx12")]
+    Dx12(std::sync::Arc<hal::dx12::OpacityMicromap>),
+}
+
+#[repr(C)]
+pub struct WGPUOpacityMicromapDescriptor {
+    pub subdivision_level: u32,
+    pub micromap_count: u32,
+    pub data: *const u8,
+    pub data_size: usize,
+    pub indices: *const i32,
+    pub index_count: usize,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpuDeviceSupportsOpacityMicromaps(device: native::WGPUDevice) -> native::WGPUBool {
+    let device = device.as_ref().expect("invalid device");
+    #[cfg(feature = "vulkan")]
+    if let Some(hal_device) = device.context.device_as_hal::<hal::api::Vulkan>(device.id) {
+        return hal_device.supports_opacity_micromaps() as native::WGPUBool;
+    }
+    #[cfg(feature = "dx12")]
+    if let Some(hal_device) = device.context.device_as_hal::<hal::api::Dx12>(device.id) {
+        return hal_device.supports_opacity_micromaps() as native::WGPUBool;
+    }
+    0
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpuDeviceCreateOpacityMicromap(
+    device: native::WGPUDevice,
+    descriptor: *const WGPUOpacityMicromapDescriptor,
+) -> *mut WGPUOpacityMicromapImpl {
+    let device = device.as_ref().expect("invalid device");
+    let desc = descriptor.as_ref().expect("invalid descriptor");
+    let data = if desc.data_size == 0 { &[][..] } else { std::slice::from_raw_parts(desc.data, desc.data_size) };
+    let indices = if desc.index_count == 0 { &[][..] } else { std::slice::from_raw_parts(desc.indices, desc.index_count) };
+    let hal_desc = hal::opacity_micromap::OpacityMicromapDescriptor {
+        subdivision_level: desc.subdivision_level,
+        micromap_count: desc.micromap_count,
+        data,
+        indices,
+    };
+    #[cfg(feature = "vulkan")]
+    if let Some(hal_device) = device.context.device_as_hal::<hal::api::Vulkan>(device.id) {
+        return match hal_device.create_opacity_micromap(&hal_desc) {
+            Ok(m) => Box::into_raw(Box::new(WGPUOpacityMicromapImpl::Vulkan(m))),
+            Err(error) => {
+                log::error!("wgpuDeviceCreateOpacityMicromap (Vulkan): {error:?}");
+                std::ptr::null_mut()
+            }
+        };
+    }
+    #[cfg(feature = "dx12")]
+    if let Some(hal_device) = device.context.device_as_hal::<hal::api::Dx12>(device.id) {
+        return match hal_device.create_opacity_micromap(&hal_desc) {
+            Ok(m) => Box::into_raw(Box::new(WGPUOpacityMicromapImpl::Dx12(m))),
+            Err(error) => {
+                log::error!("wgpuDeviceCreateOpacityMicromap (D3D12): {error:?}");
+                std::ptr::null_mut()
+            }
+        };
+    }
+    std::ptr::null_mut()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpuOpacityMicromapRelease(micromap: *mut WGPUOpacityMicromapImpl) {
+    if !micromap.is_null() {
+        drop(Box::from_raw(micromap));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wgpuDeviceSetNextBlasOpacityMicromaps(
+    _device: native::WGPUDevice,
+    count: usize,
+    micromaps: *const *mut WGPUOpacityMicromapImpl,
+) {
+    let list = if count == 0 || micromaps.is_null() { &[][..] } else { std::slice::from_raw_parts(micromaps, count) };
+    #[cfg(feature = "vulkan")]
+    {
+        let mine: Vec<_> = list
+            .iter()
+            .map(|&m| match m.as_ref() {
+                Some(WGPUOpacityMicromapImpl::Vulkan(m)) => Some(m.clone()),
+                _ => None,
+            })
+            .collect();
+        hal::vulkan::set_next_blas_opacity_micromaps(if mine.iter().any(|m| m.is_some()) { Some(mine) } else { None });
+    }
+    #[cfg(feature = "dx12")]
+    {
+        let mine: Vec<_> = list
+            .iter()
+            .map(|&m| match m.as_ref() {
+                #[allow(unreachable_patterns)]
+                Some(WGPUOpacityMicromapImpl::Dx12(m)) => Some(m.clone()),
+                _ => None,
+            })
+            .collect();
+        hal::dx12::set_next_blas_opacity_micromaps(if mine.iter().any(|m| m.is_some()) { Some(mine) } else { None });
+    }
+}

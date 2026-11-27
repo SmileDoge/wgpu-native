@@ -79,6 +79,8 @@ mod dcomp;
 mod descriptor;
 mod device;
 mod instance;
+mod micromap;
+pub use micromap::{set_next_blas_opacity_micromaps, OpacityMicromap};
 mod sampler;
 mod shader_compilation;
 mod suballocation;
@@ -1213,6 +1215,8 @@ impl crate::DynPipelineCache for PipelineCache {}
 pub struct AccelerationStructure {
     resource: Direct3D12::ID3D12Resource,
     allocation: suballocation::Allocation,
+    /// openRTS's fork: its geometries' opacity micromaps (micromap.rs).
+    micromaps: Vec<Option<Arc<OpacityMicromap>>>,
 }
 
 impl crate::DynAccelerationStructure for AccelerationStructure {}

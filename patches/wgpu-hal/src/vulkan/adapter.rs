@@ -104,6 +104,8 @@ pub struct PhysicalDeviceFeatures {
     zero_initialize_workgroup_memory:
         Option<vk::PhysicalDeviceZeroInitializeWorkgroupMemoryFeatures<'static>>,
     position_fetch: Option<vk::PhysicalDeviceRayTracingPositionFetchFeaturesKHR<'static>>,
+    /// openRTS's fork: VK_EXT_opacity_micromap's.
+    opacity_micromap: Option<vk::PhysicalDeviceOpacityMicromapFeaturesEXT<'static>>,
 
     /// Features provided by `VK_KHR_shader_atomic_int64`, promoted to Vulkan 1.2.
     shader_atomic_int64: Option<vk::PhysicalDeviceShaderAtomicInt64Features<'static>>,
@@ -179,6 +181,9 @@ impl PhysicalDeviceFeatures {
             info = info.push_next(feature);
         }
         if let Some(ref mut feature) = self.position_fetch {
+            info = info.push_next(feature);
+        }
+        if let Some(ref mut feature) = self.opacity_micromap {
             info = info.push_next(feature);
         }
         if let Some(ref mut feature) = self.shader_image_atomic_int64 {
@@ -493,6 +498,11 @@ impl PhysicalDeviceFeatures {
                     vk::PhysicalDeviceSubgroupSizeControlFeatures::default()
                         .subgroup_size_control(true),
                 )
+            } else {
+                None
+            },
+            opacity_micromap: if enabled_extensions.contains(&ext::opacity_micromap::NAME) {
+                Some(vk::PhysicalDeviceOpacityMicromapFeaturesEXT::default().micromap(true))
             } else {
                 None
             },
@@ -1132,6 +1142,10 @@ impl PhysicalDeviceProperties {
             extensions.push(khr::acceleration_structure::NAME);
             extensions.push(khr::buffer_device_address::NAME);
             extensions.push(khr::ray_query::NAME);
+            // openRTS's fork: opacity micromaps where there are.
+            if self.supports_extension(ext::opacity_micromap::NAME) {
+                extensions.push(ext::opacity_micromap::NAME);
+            }
         }
 
         if requested_features.contains(wgt::Features::EXPERIMENTAL_RAY_HIT_VERTEX_RETURN) {
@@ -2002,6 +2016,11 @@ impl super::Adapter {
         } else {
             None
         };
+        let opacity_micromap_fns = if enabled_extensions.contains(&ext::opacity_micromap::NAME) {
+            Some(ext::opacity_micromap::Device::new(&self.instance.raw, &raw_device))
+        } else {
+            None
+        };
         let mesh_shading_fns = if enabled_extensions.contains(&ext::mesh_shader::NAME) {
             Some(ext::mesh_shader::Device::new(
                 &self.instance.raw,
@@ -2216,6 +2235,7 @@ impl super::Adapter {
                 timeline_semaphore: timeline_semaphore_fn,
                 ray_tracing: ray_tracing_fns,
                 mesh_shading: mesh_shading_fns,
+                opacity_micromap: opacity_micromap_fns,
             },
             pipeline_cache_validation_key,
             vendor_id: self.phd_capabilities.properties.vendor_id,

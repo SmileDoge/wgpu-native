@@ -2360,6 +2360,7 @@ impl crate::Device for super::Device {
     ) -> crate::AccelerationStructureBuildSizes {
         let mut geometry_desc;
         let device5 = self.raw.cast::<Direct3D12::ID3D12Device5>().unwrap();
+        let mut omm_links;
         let ty;
         let inputs0;
         let num_desc;
@@ -2428,7 +2429,11 @@ impl crate::Device for super::Device {
                     })
                 }
                 ty = Direct3D12::D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-                inputs0 = Direct3D12::D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
+                // openRTS's fork: the next BLAS's opacity micromaps.
+                    let pending = super::micromap::next_blas_peek().unwrap_or_default();
+                    omm_links = super::micromap::Links::with_capacity(geometry_desc.len());
+                    omm_links.attach(&mut geometry_desc, &pending);
+                    inputs0 = Direct3D12::D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
                     pGeometryDescs: geometry_desc.as_ptr(),
                 };
                 num_desc = geometry_desc.len() as u32;
@@ -2519,6 +2524,13 @@ impl crate::Device for super::Device {
         Ok(super::AccelerationStructure {
             resource,
             allocation,
+            // openRTS's fork: a BLAS takes the micromaps given for it.
+            micromaps: match desc.format {
+                crate::AccelerationStructureFormat::BottomLevel => {
+                    super::micromap::next_blas_take().unwrap_or_default()
+                }
+                _ => Vec::new(),
+            },
         })
     }
 

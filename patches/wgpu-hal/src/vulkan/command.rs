@@ -555,6 +555,42 @@ impl crate::CommandEncoder for super::CommandEncoder {
             }
         };
 
+        // openRTS's fork: the BLAS's opacity micromaps, built first (once
+        // each), their links to its geometries kept until the build.
+        let descriptors: alloc::vec::Vec<_> = descriptors.into_iter().collect();
+        let mut micromaps_built = false;
+        for desc in &descriptors {
+            for micromap in desc.destination_acceleration_structure.micromaps.iter().flatten() {
+                micromaps_built |= unsafe { micromap.record_build(self.active) };
+            }
+        }
+        if micromaps_built {
+            let barrier = vk::MemoryBarrier::default()
+                .src_access_mask(vk::AccessFlags::MEMORY_WRITE)
+                .dst_access_mask(vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE);
+            unsafe {
+                self.device.raw.cmd_pipeline_barrier(
+                    self.active,
+                    vk::PipelineStageFlags::ALL_COMMANDS,
+                    vk::PipelineStageFlags::ALL_COMMANDS,
+                    vk::DependencyFlags::empty(),
+                    &[barrier],
+                    &[],
+                    &[],
+                )
+            };
+        }
+        let mut micromap_links: alloc::vec::Vec<alloc::vec::Vec<Option<vk::AccelerationStructureTrianglesOpacityMicromapEXT>>> =
+            descriptors
+                .iter()
+                .map(|desc| {
+                    desc.destination_acceleration_structure
+                        .micromaps
+                        .iter()
+                        .map(|m| m.as_ref().map(|m| m.triangles_link()))
+                        .collect()
+                })
+                .collect();
         // storage to all the data required for cmd_build_acceleration_structures
         let mut ranges_storage = smallvec::SmallVec::<
             [smallvec::SmallVec<[vk::AccelerationStructureBuildRangeInfoKHR; CAPACITY_INNER]>;
@@ -573,7 +609,10 @@ impl crate::CommandEncoder for super::CommandEncoder {
             [&[vk::AccelerationStructureBuildRangeInfoKHR]; CAPACITY_OUTER],
         >::with_capacity(descriptor_count);
 
+        let mut micromap_links = micromap_links.iter_mut();
+
         for desc in descriptors {
+            let mut links = micromap_links.next().map(|l| l.iter_mut());
             let (geometries, ranges) = match *desc.entries {
                 crate::AccelerationStructureEntries::Instances(ref instances) => {
                     let instance_data = vk::AccelerationStructureGeometryInstancesDataKHR::default(
@@ -603,6 +642,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                         [vk::AccelerationStructureGeometryKHR; CAPACITY_INNER],
                     >::with_capacity(in_geometries.len());
                     for triangles in in_geometries {
+                        let link = links.as_mut().and_then(|l| l.next()).and_then(|l| l.as_mut());
                         let mut triangle_data =
                             vk::AccelerationStructureGeometryTrianglesDataKHR::default()
                                 // IndexType::NONE_KHR is not set by default (due to being provided by VK_KHR_acceleration_structure) but unless there is an
@@ -649,6 +689,9 @@ impl crate::CommandEncoder for super::CommandEncoder {
                                 });
 
                             range = range.transform_offset(transform.offset);
+                        }
+                        if let Some(link) = link {
+                            triangle_data = triangle_data.push_next(link);
                         }
 
                         let geometry = vk::AccelerationStructureGeometryKHR::default()

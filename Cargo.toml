@@ -148,3 +148,6 @@ bindgen = "0.72"
 # (patches/wgpu-hal, src/dx12/adapter.rs).
 [patch.crates-io]
 wgpu-hal = { path = "patches/wgpu-hal" }
+# openRTS's fork: naga 27.0.3 with HLSL shader model 6.9 and the opacity
+# micromaps' flag on inline ray queries (patches/naga).
+naga = { path = "patches/naga" }

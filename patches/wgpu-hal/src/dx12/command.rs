@@ -1653,9 +1653,32 @@ impl crate::CommandEncoder for super::CommandEncoder {
             .unwrap()
             .cast::<Direct3D12::ID3D12GraphicsCommandList4>()
             .unwrap();
+        // openRTS's fork: the BLAS's opacity micromap arrays, built first
+        // (once each).
+        let descriptors: Vec<_> = descriptors.into_iter().collect();
+        let mut micromaps_built = false;
+        for descriptor in &descriptors {
+            for micromap in descriptor.destination_acceleration_structure.micromaps.iter().flatten() {
+                micromaps_built |= unsafe { micromap.record_build(&list) };
+            }
+        }
+        if micromaps_built {
+            unsafe {
+                list.ResourceBarrier(&[Direct3D12::D3D12_RESOURCE_BARRIER {
+                    Type: Direct3D12::D3D12_RESOURCE_BARRIER_TYPE_UAV,
+                    Flags: Direct3D12::D3D12_RESOURCE_BARRIER_FLAG_NONE,
+                    Anonymous: Direct3D12::D3D12_RESOURCE_BARRIER_0 {
+                        UAV: mem::ManuallyDrop::new(Direct3D12::D3D12_RESOURCE_UAV_BARRIER {
+                            pResource: Default::default(),
+                        }),
+                    },
+                }])
+            };
+        }
         for descriptor in descriptors {
             // TODO: This is the same as getting build sizes apart from requiring buffers, should this be de-duped?
             let mut geometry_desc;
+            let mut omm_links;
             let ty;
             let inputs0;
             let num_desc;
@@ -1730,6 +1753,8 @@ impl crate::CommandEncoder for super::CommandEncoder {
                             },
                         })
                     }
+                    omm_links = super::micromap::Links::with_capacity(geometry_desc.len());
+                    omm_links.attach(&mut geometry_desc, &descriptor.destination_acceleration_structure.micromaps);
                     ty = Direct3D12::D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
                     inputs0 = Direct3D12::D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS_0 {
                         pGeometryDescs: geometry_desc.as_ptr(),

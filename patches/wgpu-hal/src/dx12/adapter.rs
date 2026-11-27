@@ -296,7 +296,39 @@ impl super::Adapter {
                 Direct3D12::D3D_SHADER_MODEL_6_4 => naga::back::hlsl::ShaderModel::V6_4,
                 Direct3D12::D3D_SHADER_MODEL_6_5 => naga::back::hlsl::ShaderModel::V6_5,
                 Direct3D12::D3D_SHADER_MODEL_6_6 => naga::back::hlsl::ShaderModel::V6_6,
-                Direct3D12::D3D_SHADER_MODEL_6_7 => naga::back::hlsl::ShaderModel::V6_7,
+                Direct3D12::D3D_SHADER_MODEL_6_7 => {
+                    // openRTS's fork: 6.9 where the device has it and DXR 1.2
+                    // (opacity micromaps in inline ray queries); DXC from
+                    // 1.8.2505 compiles it (openRTS ships 1.9).
+                    let mut sm = Direct3D12::D3D12_FEATURE_DATA_SHADER_MODEL {
+                        HighestShaderModel: Direct3D12::D3D_SHADER_MODEL(0x69),
+                    };
+                    let mut options5 = Direct3D12::D3D12_FEATURE_DATA_D3D12_OPTIONS5::default();
+                    let has_69 = unsafe {
+                        device.CheckFeatureSupport(
+                            Direct3D12::D3D12_FEATURE_SHADER_MODEL,
+                            <*mut _>::cast(&mut sm),
+                            size_of_val(&sm) as u32,
+                        )
+                    }
+                    .is_ok()
+                        && sm.HighestShaderModel.0 >= 0x69;
+                    let dxr_12 = unsafe {
+                        device.CheckFeatureSupport(
+                            Direct3D12::D3D12_FEATURE_D3D12_OPTIONS5,
+                            <*mut _>::cast(&mut options5),
+                            size_of_val(&options5) as u32,
+                        )
+                    }
+                    .is_ok()
+                        && options5.RaytracingTier.0 >= 12;
+                    log::info!("openRTS: D3D12 shader model 6.9 {has_69}, DXR 1.2 {dxr_12}");
+                    if has_69 && dxr_12 {
+                        naga::back::hlsl::ShaderModel::V6_9
+                    } else {
+                        naga::back::hlsl::ShaderModel::V6_7
+                    }
+                }
                 _ => unreachable!(),
             }
         } else {
