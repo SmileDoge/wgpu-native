@@ -49,7 +49,19 @@ pub(crate) fn make_slice<'a, T: 'a>(ptr: *const T, len: usize) -> &'a [T] {
 }
 
 #[inline]
+// openRTS's fork: the ray queries' limits as the adapter has them (the
+// defaults' 0 refused any TLAS; wgpu-native has no way to ask for them).
 pub fn get_base_device_limits_from_adapter_limits(adapter_limits: &wgt::Limits) -> wgt::Limits {
+    wgt::Limits {
+        max_blas_primitive_count: adapter_limits.max_blas_primitive_count,
+        max_blas_geometry_count: adapter_limits.max_blas_geometry_count,
+        max_tlas_instance_count: adapter_limits.max_tlas_instance_count,
+        max_acceleration_structures_per_shader_stage: adapter_limits.max_acceleration_structures_per_shader_stage,
+        ..base_device_limits(adapter_limits)
+    }
+}
+
+fn base_device_limits(adapter_limits: &wgt::Limits) -> wgt::Limits {
     let default_limits = wgt::Limits::default();
     let dim_1d = std::cmp::min(
         adapter_limits.max_texture_dimension_1d,

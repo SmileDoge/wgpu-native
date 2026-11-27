@@ -16,6 +16,9 @@ typedef enum WGPUNativeSType {
     WGPUSType_SurfaceConfigurationExtras = 0x0003000A,
     WGPUSType_SurfaceSourceSwapChainPanel = 0x0003000B,
     WGPUSType_PrimitiveStateExtras = 0x0003000C,
+    // openRTS's fork: ray queries (wgpuDeviceCreateBlas / Tlas).
+    WGPUSType_BindGroupEntryAccelerationStructure = 0x00030100,
+    WGPUSType_BindGroupLayoutEntryAccelerationStructure = 0x00030101,
     WGPUNativeSType_Force32 = 0x7FFFFFFF
 } WGPUNativeSType;
 
@@ -309,9 +312,125 @@ typedef enum WGPUNativeTextureFormat {
 } WGPUNativeTextureFormat;
 
 
+// openRTS's fork: ray queries (WGPUNativeFeature_RayQuery; wgpu's
+// EXPERIMENTAL_RAY_QUERY, Vulkan's VK_KHR_ray_query, D3D12's tier 1.1).
+// Bottom-level structures (a model's triangles) and top-level ones (the
+// instances), built on a command encoder, bound to shaders that declare
+// `enable wgpu_ray_query;` and `var acc: acceleration_structure;`.
+// Buffers read by a build need WGPUBufferUsage_BlasInput (vertices,
+// indices, transforms).
+typedef struct WGPUBlasImpl* WGPUBlas;
+typedef struct WGPUTlasImpl* WGPUTlas;
+
+static const uint64_t WGPUBufferUsage_BlasInput = 1ull << 10;
+static const uint64_t WGPUBufferUsage_TlasInput = 1ull << 11;
+
+// wgt::AccelerationStructureFlags
+typedef enum WGPUAccelerationStructureFlag {
+    WGPUAccelerationStructureFlag_AllowUpdate = 1 << 0,
+    WGPUAccelerationStructureFlag_AllowCompaction = 1 << 1,
+    WGPUAccelerationStructureFlag_PreferFastTrace = 1 << 2,
+    WGPUAccelerationStructureFlag_PreferFastBuild = 1 << 3,
+    WGPUAccelerationStructureFlag_LowMemory = 1 << 4,
+    WGPUAccelerationStructureFlag_UseTransform = 1 << 5,
+    WGPUAccelerationStructureFlag_Force32 = 0x7FFFFFFF
+} WGPUAccelerationStructureFlag;
+
+// wgt::AccelerationStructureGeometryFlags
+typedef enum WGPUAccelerationStructureGeometryFlag {
+    WGPUAccelerationStructureGeometryFlag_Opaque = 1 << 0,
+    WGPUAccelerationStructureGeometryFlag_NoDuplicateAnyHitInvocation = 1 << 1,
+    WGPUAccelerationStructureGeometryFlag_Force32 = 0x7FFFFFFF
+} WGPUAccelerationStructureGeometryFlag;
+
+typedef enum WGPUAccelerationStructureUpdateMode {
+    WGPUAccelerationStructureUpdateMode_Build = 0,
+    WGPUAccelerationStructureUpdateMode_PreferUpdate = 1,
+    WGPUAccelerationStructureUpdateMode_Force32 = 0x7FFFFFFF
+} WGPUAccelerationStructureUpdateMode;
+
+// One triangle geometry's size (wgt::BlasTriangleGeometrySizeDescriptor);
+// indexFormat Undefined: none (indexCount ignored).
+typedef struct WGPUBlasTriangleGeometrySize {
+    WGPUVertexFormat vertexFormat;
+    uint32_t vertexCount;
+    WGPUIndexFormat indexFormat;
+    uint32_t indexCount;
+    uint32_t flags; // WGPUAccelerationStructureGeometryFlag bits
+} WGPUBlasTriangleGeometrySize;
+
+typedef struct WGPUBlasDescriptor {
+    WGPUStringView label;
+    uint32_t flags; // WGPUAccelerationStructureFlag bits
+    WGPUAccelerationStructureUpdateMode updateMode;
+    size_t geometryCount;
+    WGPUBlasTriangleGeometrySize const * geometries;
+} WGPUBlasDescriptor;
+
+typedef struct WGPUTlasDescriptor {
+    WGPUStringView label;
+    uint32_t maxInstances;
+    uint32_t flags; // WGPUAccelerationStructureFlag bits
+    WGPUAccelerationStructureUpdateMode updateMode;
+} WGPUTlasDescriptor;
+
+// A geometry built into a BLAS: its size as created, its buffers.
+typedef struct WGPUBlasTriangleGeometry {
+    WGPUBlasTriangleGeometrySize size;
+    WGPUBuffer vertexBuffer;
+    uint32_t firstVertex;
+    uint64_t vertexStride;
+    WGPUBuffer indexBuffer;     // NULL: none
+    uint32_t firstIndex;
+    WGPUBuffer transformBuffer; // NULL: none (3x4 row-major floats)
+    uint64_t transformBufferOffset;
+} WGPUBlasTriangleGeometry;
+
+typedef struct WGPUBlasBuildEntry {
+    WGPUBlas blas;
+    size_t geometryCount;
+    WGPUBlasTriangleGeometry const * geometries;
+} WGPUBlasBuildEntry;
+
+// An instance of a TLAS: its BLAS (NULL: an empty slot), a 3x4 row-major
+// transform, the shader's custom data (24 bits) and mask.
+typedef struct WGPUTlasInstance {
+    WGPUBlas blas;
+    float transform[12];
+    uint32_t customData;
+    uint32_t mask;
+} WGPUTlasInstance;
+
+typedef struct WGPUTlasBuildEntry {
+    WGPUTlas tlas;
+    size_t instanceCount;
+    WGPUTlasInstance const * instances;
+} WGPUTlasBuildEntry;
+
+// Chained on a WGPUBindGroupLayoutEntry: the binding is an acceleration structure.
+typedef struct WGPUBindGroupLayoutEntryAccelerationStructure {
+    WGPUChainedStruct chain;
+    WGPUBool vertexReturn;
+} WGPUBindGroupLayoutEntryAccelerationStructure;
+
+// Chained on a WGPUBindGroupEntry: the TLAS bound.
+typedef struct WGPUBindGroupEntryAccelerationStructure {
+    WGPUChainedStruct chain;
+    WGPUTlas tlas;
+} WGPUBindGroupEntryAccelerationStructure;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// openRTS's fork: ray queries (see WGPUBlas above). NULL on an error (the
+// device's error callback says why).
+WGPUBlas wgpuDeviceCreateBlas(WGPUDevice device, WGPUBlasDescriptor const * descriptor);
+WGPUTlas wgpuDeviceCreateTlas(WGPUDevice device, WGPUTlasDescriptor const * descriptor);
+void wgpuBlasRelease(WGPUBlas blas);
+void wgpuTlasRelease(WGPUTlas tlas);
+void wgpuCommandEncoderBuildAccelerationStructures(WGPUCommandEncoder commandEncoder, size_t blasCount, WGPUBlasBuildEntry const * blas,
+                                                   size_t tlasCount, WGPUTlasBuildEntry const * tlas);
 
 void wgpuGenerateReport(WGPUInstance instance, WGPUGlobalReport * report);
 

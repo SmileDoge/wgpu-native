@@ -30,6 +30,8 @@ fn main() {
         ("WGPUSurface", "WGPUSurfaceImpl"),
         ("WGPUTexture", "WGPUTextureImpl"),
         ("WGPUTextureView", "WGPUTextureViewImpl"),
+        ("WGPUBlas", "WGPUBlasImpl"),
+        ("WGPUTlas", "WGPUTlasImpl"),
     ];
     let mut builder = bindgen::Builder::default()
         .header("ffi/wgpu.h")

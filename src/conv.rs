@@ -397,7 +397,9 @@ pub(crate) unsafe fn map_device_descriptor<'a>(
             // TODO(wgpu.h)
             memory_hints: Default::default(),
             trace: Default::default(),
-            experimental_features: wgt::ExperimentalFeatures::disabled(),
+            // openRTS's fork: allowed, so a device may ask for the ray queries
+            // (EXPERIMENTAL_RAY_QUERY); nothing experimental is used unasked.
+            experimental_features: unsafe { wgt::ExperimentalFeatures::enabled() },
         },
         match des.uncapturedErrorCallbackInfo.callback {
             None => None,
@@ -1344,7 +1346,17 @@ pub fn to_native_composite_alpha_mode(
 pub fn map_bind_group_entry<'a>(
     entry: &'a native::WGPUBindGroupEntry,
     extras: Option<&native::WGPUBindGroupEntryExtras>,
+    acceleration_structure: Option<&native::WGPUBindGroupEntryAccelerationStructure>,
 ) -> wgc::binding_model::BindGroupEntry<'a> {
+    // openRTS's fork: a TLAS bound (ray queries).
+    if let Some(acceleration_structure) = acceleration_structure {
+        let tlas = unsafe { acceleration_structure.tlas.as_ref() }
+            .expect("invalid TLAS for bind group entry");
+        return wgc::binding_model::BindGroupEntry {
+            binding: entry.binding,
+            resource: wgc::binding_model::BindingResource::AccelerationStructure(tlas.id),
+        };
+    }
     if let Some(buffer) = unsafe { entry.buffer.as_ref() } {
         return wgc::binding_model::BindGroupEntry {
             binding: entry.binding,
@@ -1422,7 +1434,20 @@ pub fn map_bind_group_entry<'a>(
 pub fn map_bind_group_layout_entry(
     entry: &native::WGPUBindGroupLayoutEntry,
     extras: Option<&native::WGPUBindGroupLayoutEntryExtras>,
+    acceleration_structure: Option<&native::WGPUBindGroupLayoutEntryAccelerationStructure>,
 ) -> wgt::BindGroupLayoutEntry {
+    // openRTS's fork: an acceleration structure binding (ray queries).
+    if let Some(acceleration_structure) = acceleration_structure {
+        return wgt::BindGroupLayoutEntry {
+            binding: entry.binding,
+            visibility: from_u64_bits(entry.visibility)
+                .expect("invalid visibility for bind group layout entry"),
+            ty: wgt::BindingType::AccelerationStructure {
+                vertex_return: acceleration_structure.vertexReturn != 0,
+            },
+            count: None,
+        };
+    }
     let is_buffer = entry.buffer.type_ != native::WGPUBufferBindingType_BindingNotUsed;
     let is_sampler = entry.sampler.type_ != native::WGPUSamplerBindingType_BindingNotUsed;
     let is_texture = entry.texture.sampleType != native::WGPUTextureSampleType_BindingNotUsed;

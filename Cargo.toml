@@ -143,3 +143,8 @@ bitflags = "2"
 
 [build-dependencies]
 bindgen = "0.72"
+
+# openRTS's fork: wgpu-hal 27.0.4 with D3D12's ray tracing tier taken as at least 1.1
+# (patches/wgpu-hal, src/dx12/adapter.rs).
+[patch.crates-io]
+wgpu-hal = { path = "patches/wgpu-hal" }
